@@ -1,0 +1,69 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Earthy Tones - Rice/Nature Theme */
+  --background: 45 29% 97%;      /* Warm off-white */
+  --foreground: 120 10% 20%;     /* Dark olive/grey text */
+  
+  --primary: 130 35% 35%;        /* Deep organic green */
+  --primary-foreground: 45 29% 97%;
+  
+  --secondary: 35 40% 90%;       /* Light beige/wheat */
+  --secondary-foreground: 130 35% 25%;
+  
+  --muted: 35 20% 92%;           /* Subtle grey-beige */
+  --muted-foreground: 120 5% 45%;
+  
+  --accent: 32 60% 55%;          /* Terracotta/Brown accent */
+  --accent-foreground: 45 29% 97%;
+  
+  --destructive: 0 65% 50%;
+  --destructive-foreground: 210 40% 98%;
+  
+  --border: 130 15% 85%;
+  --input: 130 15% 90%;
+  --ring: 130 35% 35%;
+  
+  --radius: 0.75rem;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary;
+    font-family: 'DM Sans', sans-serif;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Playfair Display', serif;
+    @apply font-semibold tracking-tight;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-sm border border-white/50 shadow-xl shadow-stone-900/5;
+  }
+  
+  .btn-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-[0.98];
+  }
+
+  .container-custom {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-border rounded-full hover:bg-muted-foreground/50 transition-colors;
+}
