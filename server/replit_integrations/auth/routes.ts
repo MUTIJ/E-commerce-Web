@@ -4,6 +4,7 @@ import { isAuthenticated } from "./replitAuth";
 import { db } from "../../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 
 // Register auth-specific routes
 export function registerAuthRoutes(app: Express): void {
@@ -28,9 +29,12 @@ export function registerAuthRoutes(app: Express): void {
       const [existing] = await db.select().from(users).where(eq(users.email, email));
       if (existing) return res.status(400).json({ message: "User already exists" });
 
+      // Hash the password before storing
+      const hashed = await bcrypt.hash(password, 10);
+
       const [user] = await db.insert(users).values({
         email,
-        password, // Manual password storage as requested
+        password: hashed,
         id: Math.random().toString(36).substring(2, 15),
       }).returning();
 
@@ -47,8 +51,12 @@ export function registerAuthRoutes(app: Express): void {
     try {
       const { email, password } = req.body;
       const [user] = await db.select().from(users).where(eq(users.email, email));
-      
-      if (!user || user.password !== password) {
+      if (!user) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      const match = user.password ? await bcrypt.compare(password, user.password) : false;
+      if (!match) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 

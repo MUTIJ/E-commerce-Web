@@ -6,6 +6,7 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { users, regions, categories } from "@shared/schema";
+import { adminInvites } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
 import { db } from "./db";
 
@@ -19,19 +20,102 @@ export async function registerRoutes(
   registerObjectStorageRoutes(app);
 
   // Helper to check admin status
+  const getUserIdFromReq = (req: any) => {
+    // Support both OIDC (req.user.claims.sub) and manual auth (req.user.id)
+    return req.user?.claims?.sub ?? req.user?.id;
+  };
+
   const isAdmin = async (req: any) => {
     if (!req.isAuthenticated()) return false;
-    const user = await storage.getUser(req.user.claims.sub);
+    const userId = getUserIdFromReq(req);
+    if (!userId) return false;
+    const user = await storage.getUser(userId);
     return user?.isAdmin === true;
+  };
+
+  const isSuperAdmin = async (req: any) => {
+    if (!req.isAuthenticated()) return false;
+    const userId = getUserIdFromReq(req);
+    if (!userId) return false;
+    const user = await storage.getUser(userId);
+    return user?.isSuperAdmin === true;
   };
 
   // Promote current user to admin (Temporary/Helper route)
   app.post("/api/admin/promote-me", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
-    // @ts-ignore
-    const userId = req.user.claims.sub;
+    const userId = getUserIdFromReq(req);
+    if (!userId) return res.status(400).json({ message: "Could not determine user id" });
     await db.update(users).set({ isAdmin: true }).where(eq(users.id, userId));
     res.json({ message: "You are now an admin! Please refresh the page." });
+  });
+
+  // Create an admin invite (admin-only)
+  app.post("/api/admin/invite", async (req: any, res) => {
+    if (!await isAdmin(req)) return res.status(403).json({ message: "Forbidden" });
+
+    const { email, expiresInHours, permissions, isSuperInvite } = req.body || {};
+    // Only super admins may create invites that grant permissions or super-admin status
+    if ((permissions || isSuperInvite) && !await isSuperAdmin(req)) {
+      return res.status(403).json({ message: "Only super admins may create privileged invites" });
+    }
+
+    const token = require("crypto").randomBytes(20).toString("hex");
+    const expiresAt = expiresInHours ? new Date(Date.now() + Number(expiresInHours) * 3600 * 1000) : null;
+    const createdBy = getUserIdFromReq(req);
+
+    const [invite] = await db.insert(adminInvites).values({ token, email, expiresAt, permissions: permissions ?? null, isSuperInvite: !!isSuperInvite, createdBy }).returning();
+
+    const host = req.get("host");
+    const protocol = req.protocol;
+    const inviteUrl = `${protocol}://${host}/register-invite?token=${invite.token}`;
+
+    res.json({ inviteUrl, invite });
+  });
+
+  // Register using an invite token (public)
+  app.post("/api/register-invite", async (req, res) => {
+    try {
+      const { token, email, password, firstName, lastName } = req.body;
+      if (!token || !email || !password) return res.status(400).json({ message: "Missing token, email or password" });
+
+      const [invite] = await db.select().from(adminInvites).where(eq(adminInvites.token, token));
+      if (!invite) return res.status(400).json({ message: "Invalid invite token" });
+      if (invite.used) return res.status(400).json({ message: "Invite already used" });
+      if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) return res.status(400).json({ message: "Invite expired" });
+
+      // Hash password and create user as admin (apply invite permissions)
+      const bcrypt = require("bcryptjs");
+      const hashed = await bcrypt.hash(password, 10);
+
+      const userValues: any = {
+        email,
+        password: hashed,
+        firstName,
+        lastName,
+        isAdmin: true,
+      };
+
+      if (invite.permissions) {
+        userValues.permissions = invite.permissions;
+      }
+      if (invite.isSuperInvite) {
+        userValues.isSuperAdmin = true;
+      }
+
+      const [user] = await db.insert(users).values(userValues).returning();
+
+      // mark invite used
+      await db.update(adminInvites).set({ used: true, usedBy: user.id }).where(eq(adminInvites.id, invite.id));
+
+      // login the user by calling req.login if available via passport session
+      // Not using req.login here because this endpoint may be called by non-browser clients.
+
+      res.status(201).json({ message: "Admin registered", user });
+    } catch (err: any) {
+      console.error("Invite registration failed:", err);
+      res.status(500).json({ message: "Failed to register from invite" });
+    }
   });
 
 
@@ -187,7 +271,13 @@ export async function registerRoutes(
 
   // Stats
   app.get(api.stats.get.path, async (req, res) => {
-    if (!await isAdmin(req)) return res.status(403).json({ message: "Forbidden" });
+    // Allow access if admin OR superAdmin OR has permission 'viewStats'
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    const userId = getUserIdFromReq(req);
+    const user = userId ? await storage.getUser(userId) : null;
+    const allowed = (user && (user.isAdmin === true || user.isSuperAdmin === true)) || (user && user.permissions && user.permissions.viewStats === true);
+    if (!allowed) return res.status(403).json({ message: "Forbidden" });
+
     const stats = await storage.getStats();
     res.json(stats);
   });

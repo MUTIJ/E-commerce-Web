@@ -1,5 +1,15 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
+import { execSync } from "child_process";
+// Provide sane defaults for local development so you can run with minimal setup.
+// WARNING: These defaults contain credentials you supplied and should NOT be
+// committed to a public repository. They are only applied when the env vars
+// are not already set.
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'postgres://postgres:One2009Time!!@localhost:5432/Karen_sales';
+}
+if (!process.env.SESSION_SECRET) {
+  process.env.SESSION_SECRET = 'Hezronthewinner324';
+}
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
@@ -60,6 +70,23 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Optionally run DB migrations/schema push before initializing modules
+  // that import the database. Set AUTO_DB_PUSH=false to disable.
+  try {
+    if (process.env.AUTO_DB_PUSH !== "false") {
+      log("Running drizzle-kit push to ensure DB schema is applied", "migrator");
+      // Use npx so local devDependency is used. In production, skip if not available.
+      execSync("npx drizzle-kit push", { stdio: "inherit" });
+      log("drizzle-kit push completed", "migrator");
+    } else {
+      log("AUTO_DB_PUSH is false; skipping drizzle-kit push", "migrator");
+    }
+  } catch (err) {
+    log(`drizzle-kit push failed: ${(err as any).message || err}`, "migrator");
+    // continue startup — DB may already be initialized or user will address the error
+  }
+
+  const { registerRoutes } = await import("./routes");
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -85,14 +112,17 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
+  // `reusePort` is not supported on some platforms (notably Windows).
+  // Only set it when the platform supports it.
+  const listenOptions: any = {
+    port,
+    host: "0.0.0.0",
+  };
+  if (process.platform !== "win32") {
+    listenOptions.reusePort = true;
+  }
+
+  httpServer.listen(listenOptions, () => {
+    log(`serving on port ${port}`);
+  });
 })();

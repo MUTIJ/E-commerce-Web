@@ -3,9 +3,13 @@ import { X, Plus, Minus, Trash2, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect } from "react";
+import { useAuth } from "@/hooks/use-auth";
+import { useLocation } from "wouter";
 
 export function CartDrawer() {
   const { items, isOpen, toggleCart, removeItem, updateQuantity, total } = useCart();
+  const { isAuthenticated } = useAuth();
+  const [, setLocation] = useLocation();
 
   // Prevent body scroll when cart is open
   useEffect(() => {
@@ -122,15 +126,21 @@ export function CartDrawer() {
                     KES {total().toLocaleString()}
                   </span>
                 </div>
-                <Link href="/cart">
-                  <button
-                    onClick={toggleCart}
-                    className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-semibold hover:bg-primary/90 transition-all flex items-center justify-center gap-2 group shadow-lg shadow-primary/25"
-                  >
-                    Proceed to Checkout
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                  </button>
-                </Link>
+                <button
+                  onClick={() => {
+                    toggleCart();
+                    // If user is not authenticated, redirect to /auth to prompt login
+                    if (!isAuthenticated) {
+                      setLocation("/auth");
+                    } else {
+                      setLocation("/cart");
+                    }
+                  }}
+                  className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-semibold hover:bg-primary/90 transition-all flex items-center justify-center gap-2 group shadow-lg shadow-primary/25"
+                >
+                  Proceed to Checkout
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </button>
               </div>
             )}
           </motion.div>
