@@ -115,6 +115,15 @@ export function Navbar() {
                       </Link>
                     </DropdownMenuItem>
                   )}
+                  {/* Super-admin only: Invite manager link */}
+                  {user?.isSuperAdmin && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/admin/invites" className="cursor-pointer">
+                        <Package className="w-4 h-4 mr-2" />
+                        Invite Manager
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem 
                     onClick={() => logout()}

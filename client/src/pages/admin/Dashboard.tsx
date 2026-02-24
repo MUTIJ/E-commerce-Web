@@ -2,10 +2,16 @@ import { Navbar } from "@/components/Navbar";
 import { Link } from "wouter";
 import { Package, Users, ShoppingBag, MapPin, TrendingUp, ArrowRight } from "lucide-react";
 import { useStats } from "@/hooks/use-orders";
+import { useAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
 
 export default function AdminDashboard() {
+  const { user } = useAuth();
   const { data: stats } = useStats();
+  
+  // Check if user has permission to view stats
+  // @ts-ignore
+  const canViewStats = user?.isAdmin || user?.isSuperAdmin || (user?.permissions && user.permissions.viewStats);
 
   const cards = [
     {
@@ -46,29 +52,31 @@ export default function AdminDashboard() {
         <h1 className="text-3xl font-display font-bold mb-2">Admin Dashboard</h1>
         <p className="text-muted-foreground mb-8">Overview of your store performance.</p>
 
-        {/* Stats Grid */}
-        <div className="grid md:grid-cols-3 gap-6 mb-12">
-          {cards.map((card, idx) => (
-            <motion.div
-              key={idx}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.1 }}
-              className="bg-white p-6 rounded-2xl shadow-sm border border-border hover:shadow-md transition-shadow"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div className={`p-3 rounded-xl ${card.color}`}>
-                  <card.icon className="w-6 h-6" />
+        {/* Stats Grid - only show if user has viewStats permission */}
+        {canViewStats && (
+          <div className="grid md:grid-cols-3 gap-6 mb-12">
+            {cards.map((card, idx) => (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.1 }}
+                className="bg-white p-6 rounded-2xl shadow-sm border border-border hover:shadow-md transition-shadow"
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div className={`p-3 rounded-xl ${card.color}`}>
+                    <card.icon className="w-6 h-6" />
+                  </div>
+                  <Link href={card.link} className="text-muted-foreground hover:text-primary">
+                    <ArrowRight className="w-5 h-5" />
+                  </Link>
                 </div>
-                <Link href={card.link} className="text-muted-foreground hover:text-primary">
-                  <ArrowRight className="w-5 h-5" />
-                </Link>
-              </div>
-              <p className="text-sm text-muted-foreground font-medium">{card.title}</p>
-              <h3 className="text-2xl font-bold mt-1">{card.value}</h3>
-            </motion.div>
-          ))}
-        </div>
+                <p className="text-sm text-muted-foreground font-medium">{card.title}</p>
+                <h3 className="text-2xl font-bold mt-1">{card.value}</h3>
+              </motion.div>
+            ))}
+          </div>
+        )}
 
         {/* Quick Links */}
         <h2 className="text-xl font-bold mb-6">Quick Actions</h2>

@@ -9,6 +9,8 @@ import { users, regions, categories } from "@shared/schema";
 import { adminInvites } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
 import { db } from "./db";
+import { randomBytes } from "crypto";
+import bcrypt from "bcryptjs";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -60,7 +62,7 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Only super admins may create privileged invites" });
     }
 
-    const token = require("crypto").randomBytes(20).toString("hex");
+    const token = randomBytes(20).toString("hex");
     const expiresAt = expiresInHours ? new Date(Date.now() + Number(expiresInHours) * 3600 * 1000) : null;
     const createdBy = getUserIdFromReq(req);
 
@@ -85,7 +87,6 @@ export async function registerRoutes(
       if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) return res.status(400).json({ message: "Invite expired" });
 
       // Hash password and create user as admin (apply invite permissions)
-      const bcrypt = require("bcryptjs");
       const hashed = await bcrypt.hash(password, 10);
 
       const userValues: any = {
