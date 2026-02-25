@@ -6,7 +6,7 @@ import { useCreateOrder } from "@/hooks/use-orders";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Minus, Plus, Trash2, ArrowRight, Loader2, Phone } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
@@ -56,6 +56,7 @@ export default function Cart() {
   const { mutate: createOrder, isPending } = useCreateOrder();
   const { toast } = useToast();
   const [_, setLocation] = useLocation();
+  const [stkPushInProgress, setStkPushInProgress] = useState(false);
 
   const form = useForm<CheckoutForm>({
     resolver: zodResolver(checkoutSchema),
@@ -98,19 +99,54 @@ export default function Cart() {
         })),
       },
       {
-        onSuccess: (order) => {
+        onSuccess: async (order) => {
           clearCart();
-          toast({
-            title: "Order Placed Successfully! 🎉",
-            description: `Order #${order.id} has been received.`,
-          });
-          if (data.paymentMethod === "mpesa") {
+          
+          // If M-Pesa payment, trigger STK push
+          if (data.paymentMethod === "mpesa" && data.mpesaPhoneNumber) {
+            setStkPushInProgress(true);
+            try {
+              const stkResponse = await fetch("/api/mpesa/stk-push", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  phoneNumber: data.mpesaPhoneNumber,
+                  amount: Number(order.totalAmount),
+                  orderId: order.id,
+                }),
+                credentials: "include",
+              });
+
+              const stkData = await stkResponse.json();
+
+              if (stkData.success) {
+                toast({
+                  title: "Payment Prompt Sent! 📱",
+                  description: `STK push initiated on ${data.mpesaPhoneNumber}. Check your phone for the M-Pesa prompt.`,
+                });
+              } else {
+                toast({
+                  title: "Payment Initiated",
+                  description: `Please complete the payment of KES ${order.totalAmount} to proceed. Check your phone for the M-Pesa prompt.`,
+                  variant: "default",
+                });
+              }
+            } catch (error) {
+              toast({
+                title: "Order Created",
+                description: `Order #${order.id} created. Please complete payment on M-Pesa for ${data.mpesaPhoneNumber}.`,
+              });
+            } finally {
+              setStkPushInProgress(false);
+              setLocation("/orders");
+            }
+          } else {
             toast({
-              title: "Payment Prompt Sent",
-              description: `Please check phone ${data.mpesaPhoneNumber} for STK push.`,
+              title: "Order Placed Successfully! 🎉",
+              description: `Order #${order.id} has been received.`,
             });
+            setLocation("/orders");
           }
-          setLocation("/orders");
         },
       }
     );
@@ -354,13 +390,13 @@ export default function Cart() {
 
                   <button
                     type="submit"
-                    disabled={isPending}
+                    disabled={isPending || stkPushInProgress}
                     className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {isPending ? (
+                    {isPending || stkPushInProgress ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        Processing...
+                        {stkPushInProgress ? "Sending Payment Prompt..." : "Processing..."}
                       </>
                     ) : (
                       <>

@@ -149,8 +149,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createOrder(orderReq: CreateOrderRequest, userId?: string): Promise<Order> {
-    if (!userId) throw new Error("Authentication required to place an order");
-
+    // Allow guest orders (userId may be undefined)
     // Start a transaction
     return await db.transaction(async (tx) => {
       // 1. Get region price

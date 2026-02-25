@@ -11,6 +11,7 @@ import { eq } from "drizzle-orm";
 import { db } from "./db";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
+import { initiateStkPush } from "./integrations/mpesa";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -241,11 +242,11 @@ export async function registerRoutes(
   });
 
   app.post(api.orders.create.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Login required to place order" });
     try {
       const input = api.orders.create.input.parse(req.body);
+      // Resolve user id from either OIDC or manual auth
       // @ts-ignore
-      const userId = req.user?.claims?.sub;
+      const userId = getUserIdFromReq(req);
       const order = await storage.createOrder(input, userId);
       res.status(201).json(order);
     } catch (err) {
@@ -281,6 +282,82 @@ export async function registerRoutes(
 
     const stats = await storage.getStats();
     res.json(stats);
+  });
+
+  // M-Pesa STK Push
+  app.post("/api/mpesa/stk-push", async (req, res) => {
+    try {
+      const { phoneNumber, amount, orderId } = req.body;
+
+      // Validate input
+      if (!phoneNumber || !amount || !orderId) {
+        return res.status(400).json({
+          success: false,
+          errorMessage: "Missing required fields: phoneNumber, amount, orderId",
+        });
+      }
+
+      // Initiate STK push
+      const result = await initiateStkPush({
+        phoneNumber,
+        amount: Number(amount),
+        accountReference: `Order-${orderId}`,
+        transactionDescription: `Payment for Order #${orderId}`,
+      });
+
+      // Return result to client
+      res.json(result);
+    } catch (error) {
+      console.error("STK push endpoint error:", error);
+      res.status(500).json({
+        success: false,
+        errorMessage: error instanceof Error ? error.message : "Internal server error",
+      });
+    }
+  });
+
+  // M-Pesa Callback Handler (called by Safaricom after payment)
+  app.post("/api/mpesa/callback", async (req, res) => {
+    try {
+      const body = req.body;
+      console.log("M-Pesa Callback received:", JSON.stringify(body, null, 2));
+
+      // Acknowledge receipt to Safaricom
+      res.json({});
+
+      // Parse callback data
+      const result = body?.Body?.stkCallback;
+      if (!result) {
+        console.warn("Invalid callback structure");
+        return;
+      }
+
+      const { CheckoutRequestID, ResultCode, ResultDesc, CallbackMetadata } = result;
+      const metadata = CallbackMetadata?.Item || [];
+
+      // Extract metadata fields
+      const getMetadata = (name: string) => {
+        const item = metadata.find((m: any) => m.Name === name);
+        return item?.Value;
+      };
+
+      const amount = getMetadata("Amount");
+      const mpesaRef = getMetadata("MpesaReceiptNumber");
+      const phoneNumber = getMetadata("PhoneNumber");
+      const transactionDate = getMetadata("TransactionDate");
+
+      // ResultCode: 0 = success, anything else = failed
+      if (ResultCode === 0) {
+        console.log(`Payment successful: ${mpesaRef} for KES ${amount}`);
+        // Update order payment status in database
+        // You can query orders by mpesaPhoneNumber and update status
+        // This is a simplified example - you'd want to store CheckoutRequestID with order
+      } else {
+        console.log(`Payment failed with code ${ResultCode}: ${ResultDesc}`);
+      }
+    } catch (error) {
+      console.error("Callback processing error:", error);
+    }
   });
 
   // Seed Data

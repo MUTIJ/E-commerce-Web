@@ -28,6 +28,19 @@
   --input: 130 15% 90%;
   --ring: 130 35% 35%;
   
+  /* UI surface tokens for popovers, cards, etc. */
+  --card: 0 0% 100%;
+  --card-foreground: var(--foreground);
+  --card-border: var(--border);
+
+  --popover: 0 0% 100%;
+  --popover-foreground: var(--foreground);
+  --popover-border: var(--border);
+
+  --muted-border: var(--border);
+  --primary-border: var(--border);
+  --accent-border: var(--border);
+
   --radius: 0.75rem;
 }
 

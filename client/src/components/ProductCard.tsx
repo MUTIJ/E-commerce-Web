@@ -15,8 +15,12 @@ export function ProductCard({ product }: ProductCardProps) {
     addItem(product);
     toast({
       title: "Added to cart",
-      description: `${product.name} has been added to your bag.`,
-      duration: 3000,
+      description: `${product.name} added to your cart.`,
+      // Shorter popup for add-to-cart (5 seconds)
+      duration: 5000,
+      action: (
+        <a href="/cart" className="text-sm font-medium">View cart</a>
+      ),
     });
   };
 
