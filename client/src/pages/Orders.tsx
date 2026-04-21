@@ -3,6 +3,7 @@ import { useOrders } from "@/hooks/use-orders";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2, Package, CheckCircle2, Truck, Clock } from "lucide-react";
 import { CartDrawer } from "@/components/CartDrawer";
+import { getImageSrc } from "@/lib/utils";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
@@ -81,7 +82,7 @@ export default function Orders() {
                             <div key={item.id} className="flex items-center gap-4">
                               <div className="w-16 h-16 bg-muted rounded-lg overflow-hidden flex-shrink-0">
                                 {/* @ts-ignore - nested relation type */}
-                                <img src={item.product?.imageUrl} alt="Product" className="w-full h-full object-cover" />
+                                <img src={getImageSrc(item.product?.imageUrl)} alt="Product" className="w-full h-full object-cover" />
                               </div>
                               <div className="flex-1">
                                 {/* @ts-ignore */}

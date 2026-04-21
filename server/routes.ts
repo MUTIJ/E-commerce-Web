@@ -5,6 +5,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { users, regions, categories } from "@shared/schema";
 import { adminInvites } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
@@ -21,6 +22,24 @@ export async function registerRoutes(
   await setupAuth(app);
   registerAuthRoutes(app);
   registerObjectStorageRoutes(app);
+
+  // helper instance used by product validation
+  const objectStorageService = new ObjectStorageService();
+
+  // Serve attached assets (local file fallback) at /assets so uploaded
+  // files saved to the repository are accessible via HTTP. This is used
+  // as a dev-friendly fallback when object storage isn't configured.
+  try {
+    const path = await import("path");
+    const fs = await import("fs");
+    const assetsDir = path.resolve(import.meta.dirname, "..", "attached_assets");
+    if (!fs.existsSync(assetsDir)) {
+      fs.mkdirSync(assetsDir, { recursive: true });
+    }
+    app.use("/assets", (await import("express")).static(assetsDir));
+  } catch (err) {
+    console.warn("Could not setup /assets static serving:", err);
+  }
 
   // Helper to check admin status
   const getUserIdFromReq = (req: any) => {
@@ -138,6 +157,13 @@ export async function registerRoutes(
     
     try {
       const input = api.products.create.input.parse(req.body);
+      // validate image exists if provided
+      if (input.imageUrl) {
+        const exists = await objectStorageService.objectExists(input.imageUrl);
+        if (!exists) {
+          return res.status(400).json({ message: "Image path is invalid or file not found" });
+        }
+      }
       const product = await storage.createProduct(input);
       res.status(201).json(product);
     } catch (err) {
@@ -153,6 +179,12 @@ export async function registerRoutes(
     
     try {
       const input = api.products.update.input.parse(req.body);
+      if (input.imageUrl) {
+        const exists = await objectStorageService.objectExists(input.imageUrl);
+        if (!exists) {
+          return res.status(400).json({ message: "Image path is invalid or file not found" });
+        }
+      }
       const product = await storage.updateProduct(Number(req.params.id), input);
       res.json(product);
     } catch (err) {

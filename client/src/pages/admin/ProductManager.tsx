@@ -1,8 +1,8 @@
 import { Navbar } from "@/components/Navbar";
-import { useProducts, useCreateProduct, useDeleteProduct } from "@/hooks/use-products";
+import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct } from "@/hooks/use-products";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertProductSchema } from "@shared/schema";
+import { insertProductSchema, type Product } from "@shared/schema";
 import { z } from "zod";
 import { useState } from "react";
 import { Loader2, Plus, Trash2, Pencil, Image as ImageIcon } from "lucide-react";
@@ -50,14 +50,29 @@ const productSchema = insertProductSchema.extend({
 type ProductForm = z.infer<typeof productSchema>;
 
 import { useUpload } from "@/hooks/use-upload";
+import { getImageSrc } from "@/lib/utils";
+
+const defaultValues: ProductForm = {
+  name: "",
+  description: "",
+  price: "",
+  weight: "",
+  stock: 0,
+  categoryId: undefined,
+  imageUrl: "",
+  isActive: true,
+};
 
 export default function ProductManager() {
   const { data: products, isLoading } = useProducts();
   const { mutate: createProduct, isPending } = useCreateProduct();
+  const { mutate: updateProduct, isPending: isUpdating } = useUpdateProduct();
   const { mutate: deleteProduct } = useDeleteProduct();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const { uploadFile, isUploading: uploading } = useUpload();
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
 
   const { data: categories } = useQuery<any[]>({ 
     queryKey: ["/api/categories"]
@@ -65,26 +80,44 @@ export default function ProductManager() {
 
   const form = useForm<ProductForm>({
     resolver: zodResolver(productSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      price: "",
-      weight: "",
-      stock: 0,
-      categoryId: undefined,
-      imageUrl: "",
-      isActive: true,
-    },
+    defaultValues,
   });
+
+  const resetFormState = () => {
+    setEditingProduct(null);
+    setPreviewSrc(null);
+    form.reset(defaultValues);
+  };
+
+  const handleEdit = (product: Product) => {
+    setEditingProduct(product);
+    setPreviewSrc(getImageSrc(product.imageUrl || ""));
+    form.reset({
+      ...defaultValues,
+      ...product,
+      price: String(product.price),
+      categoryId: product.categoryId,
+      imageUrl: product.imageUrl || "",
+      stock: product.stock,
+      isActive: product.isActive,
+    });
+    setIsOpen(true);
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Show preview immediately from local file
+    const reader = new FileReader();
+    reader.onload = (e) => setPreviewSrc(e.target?.result as string);
+    reader.readAsDataURL(file);
+
     try {
       const response = await uploadFile(file);
       if (response) {
         form.setValue("imageUrl", response.objectPath);
+        setPreviewSrc(getImageSrc(response.objectPath));
         toast({ title: "Image uploaded successfully" });
       }
     } catch (error) {
@@ -93,14 +126,35 @@ export default function ProductManager() {
         title: "Upload failed",
         description: "Could not upload image. Please try again.",
       });
+      setPreviewSrc(null);
     }
   };
 
   const onSubmit = (data: ProductForm) => {
+    if (uploading) {
+      toast({
+        variant: "destructive",
+        title: "Image upload in progress",
+        description: "Please wait until the image upload completes before creating the product.",
+      });
+      return;
+    }
+
+    if (editingProduct) {
+      updateProduct({ id: editingProduct.id, ...data }, {
+        onSuccess: () => {
+          setIsOpen(false);
+          resetFormState();
+          toast({ title: "Success", description: "Product updated successfully" });
+        },
+      });
+      return;
+    }
+
     createProduct(data, {
       onSuccess: () => {
         setIsOpen(false);
-        form.reset();
+        resetFormState();
         toast({ title: "Success", description: "Product created successfully" });
       },
     });
@@ -118,15 +172,22 @@ export default function ProductManager() {
       <main className="container-custom py-12">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-display font-bold">Manage Products</h1>
-          <Dialog open={isOpen} onOpenChange={setIsOpen}>
+          <Dialog open={isOpen} onOpenChange={(open) => {
+              if (!open) resetFormState();
+              setIsOpen(open);
+            }}>
             <DialogTrigger asChild>
-              <button className="btn-primary px-4 py-2 rounded-lg flex items-center gap-2 font-medium">
+              <button
+                type="button"
+                onClick={resetFormState}
+                className="btn-primary px-4 py-2 rounded-lg flex items-center gap-2 font-medium"
+              >
                 <Plus className="w-4 h-4" /> Add Product
               </button>
             </DialogTrigger>
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Add New Product</DialogTitle>
+                <DialogTitle>{editingProduct ? "Update Product" : "Add New Product"}</DialogTitle>
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -225,10 +286,10 @@ export default function ProductManager() {
                                 Uploading...
                               </div>
                             )}
-                            {field.value && (
+                            {previewSrc && (
                               <div className="relative w-20 h-20 rounded-md overflow-hidden border">
                                 <img
-                                  src={field.value.startsWith("/") ? field.value : field.value}
+                                  src={previewSrc}
                                   alt="Preview"
                                   className="w-full h-full object-cover"
                                 />
@@ -252,8 +313,16 @@ export default function ProductManager() {
                       </FormItem>
                     )}
                   />
-                  <button type="submit" disabled={isPending} className="w-full btn-primary py-3 rounded-lg font-medium">
-                    {isPending ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Create Product"}
+                  <button
+                    type="submit"
+                    disabled={isPending || isUpdating || uploading}
+                    className="w-full btn-primary py-3 rounded-lg font-medium"
+                  >
+                    {isPending || isUpdating || uploading ? (
+                      <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                    ) : (
+                      editingProduct ? "Update Product" : "Create Product"
+                    )}
                   </button>
                 </form>
               </Form>
@@ -279,7 +348,7 @@ export default function ProductManager() {
                   <TableCell>
                     <div className="w-10 h-10 rounded-md overflow-hidden bg-muted">
                       {product.imageUrl ? (
-                        <img src={product.imageUrl} alt="" className="w-full h-full object-cover" />
+                        <img src={getImageSrc(product.imageUrl)} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <ImageIcon className="w-full h-full p-2 text-muted-foreground" />
                       )}
@@ -293,7 +362,11 @@ export default function ProductManager() {
                   <TableCell>{product.stock}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      <button className="p-2 hover:bg-muted rounded-full text-muted-foreground hover:text-primary">
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(product)}
+                        className="p-2 hover:bg-muted rounded-full text-muted-foreground hover:text-primary"
+                      >
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button 

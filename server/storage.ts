@@ -18,7 +18,7 @@ import {
   type InsertCategory,
   type User,
 } from "@shared/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -58,15 +58,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProducts(category?: string): Promise<Product[]> {
-    if (category) {
-      // @ts-ignore
-      return await db.select().from(products).innerJoin(categories, eq(products.categoryId, categories.id)).where(eq(categories.name, category)).then(res => res.map(r => r.products));
-    }
-    return await db.select().from(products);
+    const { ObjectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+    const service = new ObjectStorageService();
+    const normalize = service.normalizeObjectEntityPath.bind(service);
+
+    const rows: Product[] = category
+      ? // @ts-ignore
+        await db.select().from(products).innerJoin(categories, eq(products.categoryId, categories.id)).where(and(eq(categories.name, category), eq(products.isActive, true))).then(res => res.map(r => r.products))
+      : await db.select().from(products).where(eq(products.isActive, true));
+
+    // normalize any saved URLs to the `/objects/...` form so legacy data still works
+    return rows.map(p => ({
+      ...p,
+      imageUrl: p.imageUrl ? normalize(p.imageUrl) : p.imageUrl,
+    }));
   }
 
   async getProduct(id: number): Promise<Product | undefined> {
     const [product] = await db.select().from(products).where(eq(products.id, id));
+      if (product && product.imageUrl) {
+      const { ObjectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+      const service = new ObjectStorageService();
+      const normalize = service.normalizeObjectEntityPath.bind(service);
+      product.imageUrl = normalize(product.imageUrl);
+    }
     return product;
   }
 
@@ -81,7 +96,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteProduct(id: number): Promise<void> {
-    await db.delete(products).where(eq(products.id, id));
+    // Soft delete: mark isActive as false instead of removing the row.
+    // This preserves order history (FK constraint satisfied) while hiding
+    // the product from listings.
+    await db.update(products).set({ isActive: false }).where(eq(products.id, id));
   }
 
   async getRegions(): Promise<Region[]> {
@@ -129,7 +147,19 @@ export class DatabaseStorage implements IStorage {
       orderBy: [desc(orders.createdAt)],
     });
 
-    return results as unknown as OrderResponse[];
+    // normalize nested product image URLs as well
+    const { ObjectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+    const service = new ObjectStorageService();
+    const normalize = service.normalizeObjectEntityPath.bind(service);
+    return (results as unknown as OrderResponse[]).map(o => ({
+      ...o,
+      items: o.items.map(i => ({
+        ...i,
+        product: i.product
+          ? { ...i.product, imageUrl: i.product.imageUrl ? normalize(i.product.imageUrl) : i.product.imageUrl }
+          : i.product,
+      })),
+    }));
   }
 
   async getOrder(id: number): Promise<OrderResponse | undefined> {

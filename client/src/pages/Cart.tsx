@@ -11,6 +11,7 @@ import { Minus, Plus, Trash2, ArrowRight, Loader2, Phone } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
+import { getImageSrc } from "@/lib/utils";
 import {
   Form,
   FormControl,
@@ -189,7 +190,7 @@ export default function Cart() {
                 {items.map((item) => (
                   <div key={item.id} className="flex gap-4">
                     <div className="w-20 h-20 bg-muted rounded-lg overflow-hidden flex-shrink-0">
-                      <img src={item.imageUrl || ""} alt={item.name} className="w-full h-full object-cover" />
+                      <img src={getImageSrc(item.imageUrl)} alt={item.name} className="w-full h-full object-cover" />
                     </div>
                     <div className="flex-1">
                       <div className="flex justify-between items-start mb-2">

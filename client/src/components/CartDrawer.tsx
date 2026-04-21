@@ -1,10 +1,11 @@
 import { useCart } from "@/hooks/use-cart";
-import { X, Plus, Minus, Trash2, ArrowRight } from "lucide-react";
+import { X, Plus, Minus, Trash2, ArrowRight, ShoppingBag as ShoppingBagIcon } from "lucide-react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
+import { getImageSrc } from "@/lib/utils";
 
 export function CartDrawer() {
   const { items, isOpen, toggleCart, removeItem, updateQuantity, total } = useCart();
@@ -73,7 +74,7 @@ export function CartDrawer() {
                   <div key={item.id} className="flex gap-4 group">
                     <div className="w-20 h-20 bg-muted rounded-lg overflow-hidden flex-shrink-0">
                       <img
-                        src={item.imageUrl || ""}
+                        src={getImageSrc(item.imageUrl)}
                         alt={item.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
@@ -147,26 +148,5 @@ export function CartDrawer() {
         </>
       )}
     </AnimatePresence>
-  );
-}
-
-function ShoppingBagIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
-      <path d="M3 6h18" />
-      <path d="M16 10a4 4 0 0 1-8 0" />
-    </svg>
   );
 }

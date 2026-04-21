@@ -1,5 +1,6 @@
 import { type Product } from "@shared/schema";
 import { useCart } from "@/hooks/use-cart";
+import { getImageSrc } from "@/lib/utils";
 import { ShoppingBag, Star } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
@@ -34,7 +35,7 @@ export function ProductCard({ product }: ProductCardProps) {
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
         <img
-          src={product.imageUrl || ""}
+          src={getImageSrc(product.imageUrl)}
           alt={product.name}
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
         />

@@ -1,6 +1,8 @@
 import { Storage, File } from "@google-cloud/storage";
 import { Response } from "express";
+import fs from "fs";
 import { randomUUID } from "crypto";
+import path from "path";
 import {
   ObjectAclPolicy,
   ObjectPermission,
@@ -130,8 +132,12 @@ export class ObjectStorageService {
     }
   }
 
-  // Gets the upload URL for an object entity.
-  async getObjectEntityUploadURL(): Promise<string> {
+  /**
+   * Get a presigned URL to upload a new object entity.  The returned
+   * object id is also provided so callers can construct the canonical
+   * `/objects/...` path without having to inspect the URL.
+   */
+  async getObjectEntityUploadURL(): Promise<{ uploadURL: string; objectId: string }> {
     const privateObjectDir = this.getPrivateObjectDir();
     if (!privateObjectDir) {
       throw new Error(
@@ -146,12 +152,14 @@ export class ObjectStorageService {
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     // Sign URL for PUT method with TTL
-    return signObjectURL({
+    const uploadURL = await signObjectURL({
       bucketName,
       objectName,
       method: "PUT",
       ttlSec: 900,
     });
+
+    return { uploadURL, objectId };
   }
 
   // Gets the object entity file from the object path.
@@ -181,28 +189,67 @@ export class ObjectStorageService {
     return objectFile;
   }
 
-  normalizeObjectEntityPath(
-    rawPath: string,
-  ): string {
-    if (!rawPath.startsWith("https://storage.googleapis.com/")) {
-      return rawPath;
+/**
+   * Convert a raw upload URL or object path into the canonical path we
+   * expose to the client.  Clients always receive something that begins
+   * with `/objects/…`, which is handled by the express route
+   * `GET /objects/:objectPath(*)`.
+   *
+   * The backend signs URLs using Google Cloud Storage under the hood, so
+   * in many cases the `rawPath` will look like a long `https://storage.googleapis.com/...`.
+   * Previously we only normalized paths when the URL started with that
+   * exact host, and the comparison ignored a leading slash mismatch.  On
+   * some environments (Replit, local dev) the signed URL may use a
+   * different hostname or the PRIVATE_OBJECT_DIR value may omit a
+   * leading slash, which caused us to return a path such as
+   * `/mybucket/uploads/…` instead of `/objects/uploads/…`.  The browser
+   * then requested the wrong route and the image never loaded for
+   * customers.
+   */
+  normalizeObjectEntityPath(rawPath: string): string {
+    // If the caller accidentally passed in an object path already, keep it
+    // around so we don't add extra slashes.
+    let objectPath = rawPath;
+
+    // Try to parse as a URL; if it succeeds we'll work from the pathname
+    // (this strips query parameters such as the signed URL token).
+    try {
+      const url = new URL(rawPath);
+      objectPath = url.pathname;
+    } catch {
+      // not a URL, leave objectPath as-is
     }
-  
-    // Extract the path from the URL by removing query parameters and domain
-    const url = new URL(rawPath);
-    const rawObjectPath = url.pathname;
-  
-    let objectEntityDir = this.getPrivateObjectDir();
+
+    // Ensure leading slash so comparisons are consistent.
+    if (!objectPath.startsWith("/")) {
+      objectPath = "/" + objectPath;
+    }
+
+    // If PRIVATE_OBJECT_DIR is not configured (local dev), avoid throwing
+    // — return the raw path so callers can handle it. This prevents the
+    // server from crashing when reading legacy DB rows during startup.
+    let objectEntityDir: string;
+    try {
+      objectEntityDir = this.getPrivateObjectDir();
+    } catch (err) {
+      return objectPath;
+    }
+
+    if (!objectEntityDir.startsWith("/")) {
+      objectEntityDir = "/" + objectEntityDir;
+    }
     if (!objectEntityDir.endsWith("/")) {
-      objectEntityDir = `${objectEntityDir}/`;
+      objectEntityDir += "/";
     }
-  
-    if (!rawObjectPath.startsWith(objectEntityDir)) {
-      return rawObjectPath;
+
+    // If the path doesn't begin with our private-object directory, we
+    // cannot normalise it – just return what we already have (could be a
+    // public URL or something unexpected).
+    if (!objectPath.startsWith(objectEntityDir)) {
+      return objectPath;
     }
-  
-    // Extract the entity ID from the path
-    const entityId = rawObjectPath.slice(objectEntityDir.length);
+
+    const entityId = objectPath.slice(objectEntityDir.length);
     return `/objects/${entityId}`;
   }
 
@@ -219,6 +266,45 @@ export class ObjectStorageService {
     const objectFile = await this.getObjectEntityFile(normalizedPath);
     await setObjectAclPolicy(objectFile, aclPolicy);
     return normalizedPath;
+  }
+
+  /**
+   * Return true if the given object path points to a real file we can
+   * serve.  Used by product creation/update to validate that an uploaded
+   * image actually exists (or that the path is an absolute URL which we
+   * don't check).
+   */
+  async objectExists(objectPath: string): Promise<boolean> {
+    if (!objectPath) return false;
+
+    // Absolute URLs we can't verify; assume true so we don't block
+    // external images.
+    if (objectPath.startsWith("http://") || objectPath.startsWith("https://")) {
+      return true;
+    }
+
+    if (objectPath.startsWith("/objects/")) {
+      try {
+        await this.getObjectEntityFile(objectPath);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    if (objectPath.startsWith("/assets/")) {
+      // resolve relative to attached_assets at repo root
+      const publicPath = objectPath.slice("/assets/".length);
+      const localPath = path.resolve(import.meta.dirname, "..", "..", "..", "attached_assets", publicPath);
+      try {
+        await fs.promises.access(localPath);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    return false;
   }
 
   // Checks if the user can access the object entity.
