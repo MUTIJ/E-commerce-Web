@@ -45,7 +45,7 @@ export function Navbar() {
               K
             </div>
             <div className="hidden sm:block">
-              <span className="font-display font-bold text-xl text-primary block leading-none">Karen Pishori</span>
+              <span className="font-display font-bold text-xl text-primary block leading-none">Pure Pishowi Mwea</span>
               <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Mwea Rice</span>
             </div>
           </Link>

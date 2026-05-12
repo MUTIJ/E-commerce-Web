@@ -78,7 +78,7 @@ export default function AuthPage() {
             <CardDescription>
               {isLogin 
                 ? "Enter your credentials to access your account" 
-                : "Join us to start shopping for premium Karen Pishori rice"}
+                : "Join us to start shopping for premium Pure Pishowi rice"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

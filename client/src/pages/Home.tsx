@@ -36,10 +36,10 @@ export default function Home() {
               🌾 Premium Quality from Mwea
             </span>
             <h1 className="text-5xl lg:text-7xl font-display font-bold text-foreground leading-[1.1] mb-6">
-              Authentic <span className="text-primary italic">Pishori</span> Rice Delivered.
+              Authentic <span className="text-primary italic">Pishowi</span> Rice Delivered.
             </h1>
             <p className="text-lg text-muted-foreground mb-8 max-w-lg leading-relaxed">
-              Experience the distinct aroma and fluffy texture of genuine Karen Pishori Mwea Rice. Sourced directly from farmers, delivered to your doorstep.
+              Experience the distinct aroma and fluffy texture of genuine Pure Pishowi Mwea Rice. Sourced directly from farmers, delivered to your doorstep.
             </p>
             <div className="flex flex-wrap gap-4">
               <Link href="/products">
@@ -156,10 +156,10 @@ export default function Home() {
           <div className="col-span-2">
             <div className="flex items-center gap-2 mb-6">
               <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-bold">K</div>
-              <span className="font-display font-bold text-xl">Karen Pishori Mwea Rice</span>
+              <span className="font-display font-bold text-xl">Pure Pishowi Mwea Rice</span>
             </div>
             <p className="text-background/60 max-w-sm mb-6">
-              Delivering the finest quality Pishori rice from the heart of Mwea to your kitchen table. Authentic, aromatic, and premium.
+              Delivering the finest quality Pishowi rice from the heart of Mwea to your kitchen table. Authentic, aromatic, and premium.
             </p>
           </div>
           <div>
@@ -175,12 +175,12 @@ export default function Home() {
             <ul className="space-y-3 text-background/60">
               <li>Nairobi, Kenya</li>
               <li>+254 700 000 000</li>
-              <li>sales@karenpishori.co.ke</li>
+              <li>sales@purepishowi.co.ke</li>
             </ul>
           </div>
         </div>
         <div className="container-custom mt-12 pt-8 border-t border-white/10 text-center text-background/40 text-sm">
-          © {new Date().getFullYear()} Karen Pishori Mwea Rice. All rights reserved.
+          © {new Date().getFullYear()} Pure Pishowi Mwea Rice. All rights reserved.
         </div>
       </footer>
     </div>

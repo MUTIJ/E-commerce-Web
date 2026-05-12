@@ -119,7 +119,8 @@ export type CreateOrderRequest = {
   guestName?: string;
   guestPhone?: string;
   deliveryAddress: string;
-  regionId: number;
+  regionId?: number;
+  customRegion?: string;
   paymentMethod: 'cod' | 'mpesa';
   mpesaPhoneNumber?: string;
   items: CartItem[];

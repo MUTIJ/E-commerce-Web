@@ -114,7 +114,8 @@ export const api = {
         guestName: z.string().optional(),
         guestPhone: z.string().optional(),
         deliveryAddress: z.string(),
-        regionId: z.coerce.number(),
+        regionId: z.coerce.number().optional(),
+        customRegion: z.string().optional(),
         paymentMethod: z.enum(['cod', 'mpesa']),
         mpesaPhoneNumber: z.string().optional(),
         items: z.array(z.object({

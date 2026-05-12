@@ -317,6 +317,9 @@ export async function registerRoutes(
   });
 
   // M-Pesa STK Push
+  // COMMENTED OUT: Using WhatsApp integration instead for now
+  // Uncomment this when ready to use M-Pesa STK push
+  /*
   app.post("/api/mpesa/stk-push", async (req, res) => {
     try {
       const { phoneNumber, amount, orderId } = req.body;
@@ -347,6 +350,7 @@ export async function registerRoutes(
       });
     }
   });
+  */
 
   // M-Pesa Callback Handler (called by Safaricom after payment)
   app.post("/api/mpesa/callback", async (req, res) => {
@@ -410,7 +414,7 @@ async function seedDatabase() {
 
   const categoriesList = await storage.getCategories();
   if (categoriesList.length === 0) {
-    const seedCategories = ["Pishori", "Long Grain", "Brown", "Broken"];
+    const seedCategories = ["Pishowi", "Long Grain", "Brown", "Broken"];
     for (const cat of seedCategories) {
       await storage.createCategory({ name: cat });
     }
@@ -422,12 +426,12 @@ async function seedDatabase() {
     const findCat = (name: string) => cats.find(c => c.name === name)?.id;
 
     await storage.createProduct({
-      name: "Karen Pishori Rice (Grade 1)",
-      description: "Premium aromatic Karen Pishori rice from Mwea. Long grains and distinct aroma.",
+      name: "Pure Pishowi Rice (Grade 1)",
+      description: "Premium aromatic Pure Pishowi rice from Mwea. Long grains and distinct aroma.",
       price: "250",
       weight: "1kg",
       stock: 1000,
-      categoryId: findCat("Pishori"),
+      categoryId: findCat("Pishowi"),
       imageUrl: "https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&q=80&w=800",
       isActive: true,
     });

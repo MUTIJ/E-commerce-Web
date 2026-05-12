@@ -182,9 +182,27 @@ export class DatabaseStorage implements IStorage {
     // Allow guest orders (userId may be undefined)
     // Start a transaction
     return await db.transaction(async (tx) => {
-      // 1. Get region price
-      const [region] = await tx.select().from(regions).where(eq(regions.id, orderReq.regionId));
-      if (!region) throw new Error("Region not found");
+      // 1. Resolve region by ID or custom region name
+      let region = null;
+      if (orderReq.regionId) {
+        [region] = await tx.select().from(regions).where(eq(regions.id, orderReq.regionId));
+      } else if (orderReq.customRegion) {
+        const customName = orderReq.customRegion.trim();
+        const [existingRegion] = await tx.select().from(regions).where(eq(regions.name, customName));
+        if (existingRegion) {
+          region = existingRegion;
+        } else {
+          const [newRegion] = await tx.insert(regions).values({
+            name: customName,
+            deliveryPrice: String(0),
+          }).returning();
+          region = newRegion;
+        }
+      }
+
+      if (!region) {
+        throw new Error("Region not found or not specified");
+      }
 
       // 2. Calculate totals and check stock
       let itemsTotal = 0;
@@ -213,12 +231,8 @@ export class DatabaseStorage implements IStorage {
       const deliveryPrice = Number(region.deliveryPrice);
       const totalAmount = String(itemsTotal + deliveryPrice);
 
-      // Simulate MPESA transaction ID if needed
-      let mpesaTransactionId = null;
-      if (orderReq.paymentMethod === 'mpesa') {
-        mpesaTransactionId = "MPESA" + Math.random().toString(36).substring(2, 10).toUpperCase();
-        console.log(`[MPESA SIMULATION] STK Push sent to ${orderReq.mpesaPhoneNumber}. Transaction ID: ${mpesaTransactionId}`);
-      }
+      // No STK push simulation: keep MPESA transaction empty until real payment is received
+      const mpesaTransactionId = null;
 
       // 3. Create Order
       const [newOrder] = await tx.insert(orders).values({
@@ -226,12 +240,12 @@ export class DatabaseStorage implements IStorage {
         guestName: orderReq.guestName,
         guestPhone: orderReq.guestPhone,
         deliveryAddress: orderReq.deliveryAddress,
-        regionId: orderReq.regionId,
+        regionId: region.id,
         totalAmount,
         status: "pending",
         paymentMethod: orderReq.paymentMethod,
         mpesaPhoneNumber: orderReq.mpesaPhoneNumber,
-        mpesaTransactionId: mpesaTransactionId,
+        mpesaTransactionId,
       }).returning();
 
       // 4. Create Order Items

@@ -6,7 +6,7 @@ import { useCreateOrder } from "@/hooks/use-orders";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { Minus, Plus, Trash2, ArrowRight, Loader2, Phone } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
@@ -35,17 +35,21 @@ const checkoutSchema = z.object({
   guestName: z.string().optional(),
   guestPhone: z.string().optional(),
   deliveryAddress: z.string().min(5, "Address must be at least 5 characters"),
-  regionId: z.string().min(1, "Please select a region"),
+  regionId: z.string().optional(),
+  customRegion: z.string().optional(),
   paymentMethod: z.enum(["cod", "mpesa"]),
   mpesaPhoneNumber: z.string().optional(),
 }).refine((data) => {
+  if (!data.regionId && !data.customRegion) {
+    return false;
+  }
   if (data.paymentMethod === "mpesa" && (!data.mpesaPhoneNumber || data.mpesaPhoneNumber.length < 10)) {
     return false;
   }
   return true;
 }, {
-  message: "Valid MPESA phone number is required",
-  path: ["mpesaPhoneNumber"],
+  message: "Please select a region or type one if it is not listed",
+  path: ["regionId"],
 });
 
 type CheckoutForm = z.infer<typeof checkoutSchema>;
@@ -57,7 +61,8 @@ export default function Cart() {
   const { mutate: createOrder, isPending } = useCreateOrder();
   const { toast } = useToast();
   const [_, setLocation] = useLocation();
-  const [stkPushInProgress, setStkPushInProgress] = useState(false);
+  // Commented out: stkPushInProgress state (using WhatsApp integration instead)
+  // const [stkPushInProgress, setStkPushInProgress] = useState(false);
 
   const form = useForm<CheckoutForm>({
     resolver: zodResolver(checkoutSchema),
@@ -86,14 +91,23 @@ export default function Cart() {
       return;
     }
 
+    if (!data.regionId && !data.customRegion) {
+      toast({
+        title: "Region required",
+        description: "Please select a region or type it if it is not listed.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     createOrder(
       {
         guestName: data.guestName,
         guestPhone: data.guestPhone,
         deliveryAddress: data.deliveryAddress,
-        regionId: Number(data.regionId),
-        paymentMethod: data.paymentMethod,
-        mpesaPhoneNumber: data.mpesaPhoneNumber,
+        regionId: data.regionId ? Number(data.regionId) : undefined,
+        customRegion: data.customRegion,
+        paymentMethod: "cod",
         items: items.map((item) => ({
           productId: item.id,
           quantity: item.quantity,
@@ -103,51 +117,88 @@ export default function Cart() {
         onSuccess: async (order) => {
           clearCart();
           
-          // If M-Pesa payment, trigger STK push
-          if (data.paymentMethod === "mpesa" && data.mpesaPhoneNumber) {
-            setStkPushInProgress(true);
-            try {
-              const stkResponse = await fetch("/api/mpesa/stk-push", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  phoneNumber: data.mpesaPhoneNumber,
-                  amount: Number(order.totalAmount),
-                  orderId: order.id,
-                }),
-                credentials: "include",
-              });
+          // Redirect to WhatsApp with order details
+          const whatsappNumber = "254701354886"; // Your WhatsApp number
+          const customerName = data.guestName || `${user?.firstName || ""}${user?.lastName ? ` ${user.lastName}` : ""}`.trim() || user?.email || "Customer";
+          const region = regions?.find((r) => String(r.id) === selectedRegionId);
+          const deliveryPrice = region ? Number(region.deliveryPrice) : 0;
+          
+          const selectedRegion = regions?.find((r) => String(r.id) === selectedRegionId);
+          const regionName = selectedRegion?.name || data.customRegion || "Not specified";
 
-              const stkData = await stkResponse.json();
+          const whatsappMessage = `
+Hello! 👋
 
-              if (stkData.success) {
-                toast({
-                  title: "Payment Prompt Sent! 📱",
-                  description: `STK push initiated on ${data.mpesaPhoneNumber}. Check your phone for the M-Pesa prompt.`,
-                });
-              } else {
-                toast({
-                  title: "Payment Initiated",
-                  description: `Please complete the payment of KES ${order.totalAmount} to proceed. Check your phone for the M-Pesa prompt.`,
-                  variant: "default",
-                });
-              }
-            } catch (error) {
-              toast({
-                title: "Order Created",
-                description: `Order #${order.id} created. Please complete payment on M-Pesa for ${data.mpesaPhoneNumber}.`,
-              });
-            } finally {
-              setStkPushInProgress(false);
-              setLocation("/orders");
-            }
-          } else {
-            toast({
-              title: "Order Placed Successfully! 🎉",
-              description: `Order #${order.id} has been received.`,
-            });
+I just placed an order with your shop:
+
+📦 Order Details:
+- Order ID: #${order.id}
+- Region: ${regionName}
+- Total Amount: KES ${order.totalAmount}
+- Delivery Fee: KES ${deliveryPrice}
+- Delivery Address: ${data.deliveryAddress}
+
+
+Items Ordered:
+${items.map((item) => `- ${item.name} (${item.weight}) x${item.quantity}`).join("\n")}
+
+Please confirm my order. Thank you! 😊
+          `.trim();
+
+          const encodedMessage = encodeURIComponent(whatsappMessage);
+          const whatsappLink = `https://wa.me/${whatsappNumber}?text=${encodedMessage}`;
+
+          // Show success toast and redirect
+          toast({
+            title: "Order Placed Successfully! 🎉",
+            description: `Order #${order.id} has been created. Opening WhatsApp to confirm with us...`,
+          });
+
+          // Open WhatsApp link in a new window
+          setTimeout(() => {
+            window.open(whatsappLink, "_blank");
             setLocation("/orders");
-          }
+          }, 1500);
+
+          // COMMENTED OUT: STK Push Integration (to be used later)
+          // if (data.paymentMethod === "mpesa" && data.mpesaPhoneNumber) {
+          //   setStkPushInProgress(true);
+          //   try {
+          //     const stkResponse = await fetch("/api/mpesa/stk-push", {
+          //       method: "POST",
+          //       headers: { "Content-Type": "application/json" },
+          //       body: JSON.stringify({
+          //         phoneNumber: data.mpesaPhoneNumber,
+          //         amount: Number(order.totalAmount),
+          //         orderId: order.id,
+          //       }),
+          //       credentials: "include",
+          //     });
+          //
+          //     const stkData = await stkResponse.json();
+          //
+          //     if (stkData.success) {
+          //       toast({
+          //         title: "Payment Prompt Sent! 📱",
+          //         description: `STK push initiated on ${data.mpesaPhoneNumber}. Check your phone for the M-Pesa prompt.`,
+          //       });
+          //     } else {
+          //       toast({
+          //         title: "Payment Initiated",
+          //         description: `Please complete the payment of KES ${order.totalAmount} to proceed. Check your phone for the M-Pesa prompt.`,
+          //         variant: "default",
+          //       });
+          //     }
+          //   } catch (error) {
+          //     toast({
+          //       title: "Order Created",
+          //       description: `Order #${order.id} created. Please complete payment on M-Pesa for ${data.mpesaPhoneNumber}.`,
+          //     });
+          //   } finally {
+          //     setStkPushInProgress(false);
+          //     setLocation("/orders");
+          //   }
+          // }
         },
       }
     );
@@ -297,6 +348,27 @@ export default function Cart() {
 
                   <FormField
                     control={form.control}
+                    name="customRegion"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Other Region</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Type region if not listed"
+                            {...field}
+                            className="rounded-xl"
+                          />
+                        </FormControl>
+                        <p className="text-sm text-muted-foreground">
+                          If your delivery area is not listed above, type it here.
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
                     name="deliveryAddress"
                     render={({ field }) => (
                       <FormItem>
@@ -310,68 +382,9 @@ export default function Cart() {
                   />
 
                   <div className="border-t border-border pt-6 mt-6">
-                    <FormField
-                      control={form.control}
-                      name="paymentMethod"
-                      render={({ field }) => (
-                        <FormItem className="space-y-3">
-                          <FormLabel>Payment Method</FormLabel>
-                          <FormControl>
-                            <RadioGroup
-                              onValueChange={field.onChange}
-                              defaultValue={field.value}
-                              className="flex flex-col space-y-1"
-                            >
-                              <FormItem className="flex items-center space-x-3 space-y-0 rounded-xl border border-border p-4 hover:bg-muted/50 cursor-pointer">
-                                <FormControl>
-                                  <RadioGroupItem value="cod" />
-                                </FormControl>
-                                <FormLabel className="font-normal cursor-pointer flex-1">
-                                  Cash on Delivery
-                                </FormLabel>
-                              </FormItem>
-                              <FormItem className="flex items-center space-x-3 space-y-0 rounded-xl border border-border p-4 hover:bg-muted/50 cursor-pointer">
-                                <FormControl>
-                                  <RadioGroupItem value="mpesa" />
-                                </FormControl>
-                                <FormLabel className="font-normal cursor-pointer flex-1">
-                                  M-PESA (STK Push)
-                                </FormLabel>
-                              </FormItem>
-                            </RadioGroup>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {form.watch("paymentMethod") === "mpesa" && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl"
-                      >
-                         <FormField
-                          control={form.control}
-                          name="mpesaPhoneNumber"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-green-800">M-PESA Phone Number</FormLabel>
-                              <div className="flex items-center gap-2">
-                                <Phone className="w-4 h-4 text-green-600" />
-                                <FormControl>
-                                  <Input placeholder="07XX XXX XXX" {...field} className="bg-white border-green-200 focus:ring-green-500 rounded-xl" />
-                                </FormControl>
-                              </div>
-                              <p className="text-xs text-green-700 mt-2">
-                                You will receive an MPESA prompt on this phone to complete payment.
-                              </p>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </motion.div>
-                    )}
+                    <p className="text-sm text-muted-foreground">
+                      Payment selection is hidden. Orders are confirmed via WhatsApp.
+                    </p>
                   </div>
 
                   <div className="space-y-3 pt-4 border-t border-border">
@@ -391,13 +404,13 @@ export default function Cart() {
 
                   <button
                     type="submit"
-                    disabled={isPending || stkPushInProgress}
+                    disabled={isPending}
                     className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {isPending || stkPushInProgress ? (
+                    {isPending ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        {stkPushInProgress ? "Sending Payment Prompt..." : "Processing..."}
+                        Processing...
                       </>
                     ) : (
                       <>
